@@ -1,2 +1,4 @@
+if gdb and xslx headers differ, set the mappings in mappings.config
+
 source myenv/bin/activate
-python3 mainDnD.py
+python3 main.py

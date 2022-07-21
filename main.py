@@ -1,35 +1,18 @@
 #!/usr/bin/python3
-import tkinter
-import tkinter.filedialog
-import subprocess
-
-root=tkinter.Tk()
-try:
-	root.tk.call('tk_getOpenFile', '-foobarbaz')
-except:
-	pass
-# root.tk.call('set', '::tk::dialog::file::showHiddenBtn', '1')
-# root.tk.call('set', '::tk::dialog::file::showHiddenVar', '0')
-
-baseFrame = tkinter.Frame(root)
-baseFrame.grid()
-
-####
-#Functions
-def setDirName(entry):
-	loc = tkinter.filedialog.askdirectory(initialdir = ".")
-	entry.delete(0,'end')
-	entry.insert(0,loc)
-	entry.xview_moveto(1)
-
-def setFileName(entry):
-	loc = tkinter.filedialog.askopenfilename(initialdir = ".")
-	entry.delete(0,'end')
-	entry.insert(0,loc)
-	entry.xview_moveto(1)
+import os
+import sys
 
 def read_xslx(filepath,key):
+#Takes in path to xslx file and key field
+#key field is a field that is unique across all entries
+#e.g building ID
+#returns the header row as a list
+#and the rest of the xslx data as a dictionary, built using the key field
 	import openpyxl
+	##Hides warning
+	import warnings
+	warnings.simplefilter("ignore")
+	##
 	wb = openpyxl.load_workbook(filename=filepath)
 	all_sheets = wb.sheetnames
 	header_row = [i.value for i in wb[all_sheets[0]][1]]
@@ -44,18 +27,26 @@ def read_xslx(filepath,key):
 			sheets_dict[row[header_row.index(primary_key)].value]=row_dict
 	return header_row,sheets_dict
 
-import os
-import sys
-with open(os.path.dirname(os.path.realpath(sys.argv[0]))+"/mappings.config","r") as f:
-	lines = f.readlines()
-	llines = [line.strip().split(",") for line in lines]
-	mappings={}
-	xsl_idx = llines[0].index('xslx')
-	gdb_idx = llines[0].index('gdb')
-	for line in llines[1:]:
-		mappings[line[xsl_idx]] = line[gdb_idx]
+def read_mappings(filepath):
+#Reads the mappings.config file
+#returns mappings dictionary that maps the xsl field name to gdb field name
+	import os
+	import sys
+	with open(filepath,"r") as f:
+		lines = f.readlines()
+		llines = [line.strip().split(",") for line in lines]
+		mappings={}
+		xsl_idx = llines[0].index('xslx')
+		gdb_idx = llines[0].index('gdb')
+		for line in llines[1:]:
+			mappings[line[xsl_idx]] = line[gdb_idx]
+	return mappings
 
-def read_gdb(filepath,key,header_row):
+def read_gdb(filepath,key,header_row,mappings={}):
+#header row as an input defines what attributes to extract from model
+#this is in case the model contains unneeded attributes, we don't want to extract them
+#throws error if cannot open gdb
+#returns dictionary of all features, built with key provided
 	import sys
 	from osgeo import ogr
 	ogr.UseExceptions()
@@ -75,23 +66,36 @@ def read_gdb(filepath,key,header_row):
 	for layer in featsClassList:
 		for feature in layer:
 			dic = feature.items()
-			if dic['NUM_TYPE'] != "STRATA":
-				continue
+			if 'NUM_TYPE' in dic:
+				if dic['NUM_TYPE'] != "STRATA":
+					continue
 			feature_dict={}
 			for idx,i in enumerate(header_row):
 				#for field in header row, extract from dic and place into feat_dict
 				if i in dic:
 					feature_dict[i] = dic[i]
-				elif mappings[i] in dic:
-					feature_dict[i] = dic[mappings[i]]
+				elif i in mappings:
+					if mappings[i] in dic:
+					#in case field name not in model
+					#check if mapped field name in model
+						feature_dict[i] = dic[mappings[i]]
 				else:
 					print(f"Field {i} does not exist for feature {dic}")
 					continue
-			features_dict[dic[primary_key]] = feature_dict
+			if primary_key in dic:
+				features_dict[dic[primary_key]] = feature_dict
+			elif mappings[primary_key] in dic:
+				features_dict[dic[mappings[primary_key]]] = feature_dict
 	del gdb
 	return features_dict
 
-def compare(a,b,getkey=False):
+def compare_row(a,b,getkey=False):
+#Takes in dictionaries a and b
+#They represent a row of data
+#e.g a = {"name":"john","age":5}
+#if a and b have equal contents, returns 0
+#if they are different, return 1
+#if different and getkey=True, returns the first differing contents as tuple
 	for key in a.keys():
 		aa=a[key].strip()
 		bb=b[key].strip()
@@ -104,39 +108,48 @@ def compare(a,b,getkey=False):
 			return 1
 	return 0
 
-success=[]
-nonexist=[]
-mismatch=[]
-def start_analysis():
-	gdb_filepath = gdbEntry.get()
-	xslx_filepath = xslxEntry.get()
-	key=keyEntry.get()
+def start_analysis(gdbpath,xslxpath,key,mappings_path = os.path.dirname(os.path.realpath(sys.argv[0]))+"/mappings.config"):
+#reads gdb and xslx from Entry widgets and compares them
+#possible results
+#identical
+#(0,{key value})
+#found matching key entries but some field differs
+#(1,{key value},{differing value A},{differing value B},{entry in xslx},{entry gdb})
+#could not find xslx entry in gdb
+#(2,{key value})
+#returns as list of results (which are tuples)
+	gdb_filepath = gdbpath
+	xslx_filepath = xslxpath
 	header_row,xslx_dict = read_xslx(xslx_filepath,key)
-	# print(xslx_dict)
-	gdb_dict = read_gdb(gdb_filepath,key,header_row)
+	mappings = read_mappings(mappings_path)
+	gdb_dict = read_gdb(gdb_filepath,key,header_row,mappings=mappings)
 	to_return = []
 	for unit in xslx_dict.keys():
 		if unit in gdb_dict:
 			a=xslx_dict[unit]
 			b=gdb_dict[unit]
-			r = compare(a,b)
+			r = compare_row(a,b)
 			if r==0:
 				to_return.append((0,unit))
 			elif r==1:
-				a,b = compare(a,b,getkey=True)
+				a,b = compare_row(a,b,getkey=True)
 				to_return.append((1,unit,a,b,xslx_dict[unit],gdb_dict[unit]))
 		else:
 			to_return.append((2,unit))
 	return to_return
-	pass
 
-def download_report():
+def download_report(reportEntry,gdbEntry,xslxEntry,keyEntry):
+#runs analysis function that generates list of results
+#writes results into report.txt in given directory
 	import datetime
 	from pathlib import Path
-	epoch_string = datetime.datetime.now().strftime("%s")
+	epoch_string = str(datetime.datetime.now().timestamp())[:-2]
 	report_filename=f"report_{epoch_string}.txt"
 	report_filepath = Path(reportEntry.get()).joinpath(report_filename)
-	analysis_result = start_analysis()
+	gdbpath = gdbEntry.get()
+	xslxpath = xslxEntry.get()
+	key = keyEntry.get()
+	analysis_result = start_analysis(gdbpath,xslxpath,key)
 	to_write=[]
 	for i in analysis_result:
 		if i[0] == 0:
@@ -150,55 +163,63 @@ def download_report():
 			to_write.append(f"NOTFOUNDINGDB,{i[1]}")
 	with open(report_filepath,'w') as f:
 		f.write('\n'.join(to_write))
-	pass
 
-gdbLabel = tkinter.Label(baseFrame, text="gdb file:")
-gdbLabel.grid(row=0, column=0)
+def setDirName(entry):
+#tkinter GUI function
+	import tkinter.filedialog
+	loc = tkinter.filedialog.askdirectory(initialdir = ".")
+	entry.delete(0,'end')
+	entry.insert(0,loc)
+	entry.xview_moveto(1)
 
-xslxLabel = tkinter.Label(baseFrame, text="xslx file:")
-xslxLabel.grid(row=1, column=0)
+def setFileName(entry):
+#tkinter GUI function
+	import tkinter.filedialog
+	loc = tkinter.filedialog.askopenfilename(initialdir = ".")
+	entry.delete(0,'end')
+	entry.insert(0,loc)
+	entry.xview_moveto(1)
 
-reportLabel = tkinter.Label(baseFrame, text="report file:")
-reportLabel.grid(row=2, column=0)
+def tkinit():
+	import tkinter
+	root=tkinter.Tk()
+	baseFrame = tkinter.Frame(root)
+	baseFrame.grid()
+	gdbLabel = tkinter.Label(baseFrame, text="gdb file:")
+	gdbLabel.grid(row=0, column=0)
+	xslxLabel = tkinter.Label(baseFrame, text="xslx file:")
+	xslxLabel.grid(row=1, column=0)
+	reportLabel = tkinter.Label(baseFrame, text="report file:")
+	reportLabel.grid(row=2, column=0)
+	keyLabel = tkinter.Label(baseFrame, text="Key:")
+	keyLabel.grid(row=3, column=0)
+	keyEntry = tkinter.Entry(baseFrame)
+	keyEntry.grid(row=3, column=1, columnspan=2)
+	keyEntry.insert(tkinter.END,"NUM_UNIT_ID")
+	gdbEntry = tkinter.Entry(baseFrame)
+	gdbEntry.grid(row=0, column=1, columnspan=2)
+	gdbEntry.insert(tkinter.END,"gdb file location")
+	xslxEntry = tkinter.Entry(baseFrame)
+	xslxEntry.grid(row=1, column=1, columnspan=2)
+	xslxEntry.insert(tkinter.END,"xslx file location")
+	gdbPickerButton = tkinter.Button(baseFrame, text="Browse", command=lambda: setDirName(gdbEntry))
+	gdbPickerButton.grid(row=0, column=3)
+	xslxPickerButton = tkinter.Button(baseFrame, text="Browse", command=lambda: setFileName(xslxEntry))
+	xslxPickerButton.grid(row=1, column=3)
+	reportPickerButton = tkinter.Button(baseFrame, text="Browse", command=lambda: setDirName(reportEntry))
+	reportPickerButton.grid(row=2, column=3)
+	reportEntry = tkinter.Entry(baseFrame)
+	reportEntry.grid(row=2, column=1, columnspan=2)
+	reportEntry.insert(tkinter.END,"report file location")
+	downloadButton = tkinter.Button(baseFrame, text="Analyze + Download", command=lambda: download_report(reportEntry,gdbEntry,xslxEntry,keyEntry))
+	downloadButton.grid(row=5, column=1)
+	quitButton = tkinter.Button(baseFrame, text="Quit", command=root.destroy, bg='Red', fg='Black')
+	quitButton.grid(row=5, column=3)
+	return root
 
-keyLabel = tkinter.Label(baseFrame, text="Key:")
-keyLabel.grid(row=3, column=0)
-
-keyEntry = tkinter.Entry(baseFrame)
-keyEntry.grid(row=3, column=1, columnspan=2)
-keyEntry.insert(tkinter.END,"NUM_UNIT_ID")
-
-gdbEntry = tkinter.Entry(baseFrame)
-gdbEntry.grid(row=0, column=1, columnspan=2)
-gdbEntry.insert(tkinter.END,"gdb file location")
-
-xslxEntry = tkinter.Entry(baseFrame)
-xslxEntry.grid(row=1, column=1, columnspan=2)
-xslxEntry.insert(tkinter.END,"xslx file location")
-
-gdbPickerButton = tkinter.Button(baseFrame, text="Browse", command=lambda: setDirName(gdbEntry))
-gdbPickerButton.grid(row=0, column=3)
-
-xslxPickerButton = tkinter.Button(baseFrame, text="Browse", command=lambda: setFileName(xslxEntry))
-xslxPickerButton.grid(row=1, column=3)
-
-from tkinter import ttk
-progressBar = ttk.Progressbar(baseFrame,orient="horizontal",mode="determinate",length=400)
-progressBar.grid(row=4,column=0,columnspan=3)
-
-reportPickerButton = tkinter.Button(baseFrame, text="Browse", command=lambda: setDirName(reportEntry))
-reportPickerButton.grid(row=2, column=3)
-
-reportEntry = tkinter.Entry(baseFrame)
-reportEntry.grid(row=2, column=1, columnspan=2)
-reportEntry.insert(tkinter.END,"report file location")
-
-downloadButton = tkinter.Button(baseFrame, text="Analyze + Download", command=download_report)
-downloadButton.grid(row=5, column=1)
-
-quitButton = tkinter.Button(baseFrame, text="Quit", command=root.destroy, bg='Red', fg='Black')
-quitButton.grid(row=5, column=3)
-root.mainloop()
+if __name__ == "__main__":
+	root=tkinit()
+	root.mainloop()
 
 # gdb_filepath = "/home/cheze/SchoolRelated/term5/software_element/hdb_project/TPY_Batch12.gdb"
 # xslx_filepath = "/home/cheze/SchoolRelated/term5/software_element/hdb_project/Unit Attributes(PIDB).xlsx"
