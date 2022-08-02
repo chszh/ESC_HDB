@@ -31,7 +31,15 @@ class TestAll(unittest.TestCase):
 		unequalKey = main.compare_row(b,c,getkey=True)
 		self.assertEqual(equalResult,0)
 		self.assertEqual(unequalResult,1)
-		self.assertEqual(unequalKey,("01","a"))
+		self.assertEqual(unequalKey,("id","01","a"))
+	def test_add_row(self):
+		result_header,result_data = main.read_xslx(test_xslx_filename,test_key)
+		result_data['02'] = {'Block': 'Dummy', 'Street': 'ABC Street', 'PostalCode': '380004', 'Level': '01', 'Unit': '01'}
+		result_gdb_data = main.read_gdb(test_gdb_filename,test_key,result_header)
+		result = main.compare_data(result_data,result_gdb_data)
+		self.assertEqual((0,'01') in result,True)
+		self.assertEqual((1,'02','Block','Dummy','1') in result,True)
+		self.assertEqual((2,'457') in result,True)
 
 if __name__ == '__main__':
     unittest.main()
