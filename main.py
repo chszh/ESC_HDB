@@ -95,7 +95,7 @@ def read_gdb(filepath,key,header_row,mappings={}):
     del gdb
     return features_dict
 
-def compare_row(a,b,getkey=False):
+def compare_row(a,b,getkey=False, testInstrument = None):
 #Takes in dictionaries a and b
 #They represent a row of data
 #e.g a = {"name":"john","age":5} b = {"name":"john","age":6}
@@ -104,14 +104,20 @@ def compare_row(a,b,getkey=False):
 #if different and getkey=True, returns the field, followed by first differing contents as tuple
 #e.g ("age",5,6)
     if set(a.keys()) != set(b.keys()):
+        if (testInstrument != None):
+            testInstrument[0] = 1
         raise Exception("xslx and gdb have differing headers")
     for key in a.keys():
         aa=a[key].strip()
         bb=b[key].strip()
         if aa.isdigit() and bb.isdigit():
+            if (testInstrument != None):
+                testInstrument[1] += 1
             aa=int(aa)
             bb=int(bb)
         if aa != bb:
+            if (testInstrument != None):
+                testInstrument[2] += 1
             if getkey:
                 return (key,aa,bb)
             return 1
