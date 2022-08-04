@@ -104,6 +104,9 @@ def compare_row(a,b,getkey=False, testInstrument = None):
 #if different and getkey=True, returns the field, followed by first differing contents as tuple
 #e.g ("age",5,6)
     if set(a.keys()) != set(b.keys()):
+        # for white box testing, if not testing, instrument is set to None
+        # instrument is a dictionary counting the number of times each statement is covered
+        # eg. {0:1, 1:0, 2:2}
         if (testInstrument != None):
             testInstrument[0] = 1
         raise Exception("xslx and gdb have differing headers")
