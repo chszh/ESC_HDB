@@ -142,6 +142,9 @@ def compare_data(xslx_dict,gdb_dict):
                 to_return.append((1,unit,key,a,b))
         else:
             to_return.append((2,unit))
+    for unit in gdb_dict.keys():
+        if unit not in xslx_dict:
+            to_return.append((3,unit,gdb_dict[unit]))
     return to_return
 
 
@@ -185,6 +188,8 @@ def download_report(reportEntry,gdbEntry,xslxEntry,keyEntry):
             # to_write.append(f"GDBENTRY:{i[5]}") 
         elif i[0] == 2:
             to_write.append(f"NOT_FOUND_IN_GDB,{key},{i[1]}")
+        elif i[0] == 3:
+            to_write.append(f"NOT_FOUND_IN_XLSX,{key},{i[1]},{i[2]}")
     with open(report_filepath,'w') as f:
         f.write('\n'.join(to_write))
 
