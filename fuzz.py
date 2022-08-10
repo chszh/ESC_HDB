@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+from ast import Try
 import numpy as np
 import pandas as pd
 import random
@@ -39,39 +40,69 @@ def generate_gibberish():
 
 ## pass through read_xlsx function
 def blackbox_testing():
+    print("Generate random excel file to test read_xlsx() function.")
     file = generate_gibberish()
     key = "Unit"
-    print("Generate random excel file to test read_xlsx() function.")
+    print()
     try:
         header, tables = main.read_xslx(file, key)
         print("No crashes!")
     except Exception as e:
         print(f"Exception thrown! {type(e)} : {e}")
 
-# white box testing
+#White box testing
+## statement coverage
 ## Gen first dict randomly
-def gen_new_row(dict):
-    head = list(dict.keys())
-    headers = list(dict[head[0]].keys())
-    newdict = {}
-    for h in headers:
-        newdict[h] = random.choice(string.printable)
-    return newdict
-    # same = bool(random.getrandbits(1))
-    # gdb_dict = {}
-    # for k in gdb_keys:
-    #     entry = []
-    #     for row in range(9):
-    #         digit = bool(random.getrandbits(1))
-    #         length = random.randrange(0, 20)
-    #         if (digit):
-    #             fuzz = ''.join(random.choice(random.randint(0,9)) for _ in range(length))
-    #         else:
-    #             fuzz = ''.join(random.choice(string.printable) for _ in range(length))
-    #         entry.append(fuzz)
-    #     gdb_dict[k] = entry
-    # return gdb_dict
+def gen_random_dict():
+    rows = list(random.randint(0,999) for _ in range(6))
+    headers = list(random.choice(string.printable) for _ in range(5))
+    first_dict = {}
+    for r in rows:
+        digit = bool(random.getrandbits(1))
+        length = random.randrange(0, 20)
+        if (digit):
+            fuzz = ''.join(str(random.randint(0,9)) for _ in range(length))
+        else:
+            fuzz = ''.join(random.choice(string.printable) for _ in range(length))
+        first_dict[r] = fuzz
+    return first_dict
 
+## Gen second dict
+def gen_second_dict(first_dict, sameheader, samevalue):
+    if (sameheader):
+        second_dict = copy.deepcopy(first_dict)
+        if (samevalue):
+            return second_dict
+        else:
+            row = random.choice(list(second_dict.keys()))
+            ## change the value
+            value = second_dict[row]
+            newvalue = value + random.choice(string.printable)
+            second_dict[row] = newvalue
+            return second_dict
+    else:
+        second_dict = gen_random_dict()
+        while set(second_dict.keys()) == set(first_dict.keys()):
+            second_dict = gen_random_dict()
+        return second_dict
+
+def white_box():
+    test = {1: ["Same headers, Same values", (True, True)], 2: ["Same headers, Different values", (True, False)],
+            3: ["Different headers", (False, True)]}
+    a = gen_random_dict()
+    for i in test:
+        print(f"Test {i}: {test[i][0]}")
+        b = gen_second_dict(a, test[i][1][0], test[i][1][1])
+        print(f"First dict: \n {a}")
+        print(f"Second dict: \n {b}")
+        testInstr = {0:0, 1:0, 2:0}
+        try:
+            main.compare_row(a,b, False, testInstr)
+            print(testInstr, "\n")
+        except Exception as e:
+            print(f"test {i} Exception caught!\n {type(e)} : {e} \n")
+
+#System testing - logic 
 ## generate random dict with same or diff header header:
 def gen_mutated_dict(first_dict, mutation):
     gdb_keys = list(first_dict.keys())
@@ -106,12 +137,15 @@ def gen_mutated_dict(first_dict, mutation):
         second_dict[newhead] = newdata
         print(f"Added row: {newhead} : {second_dict[newhead]}")
         return second_dict, newhead
-    # elif (mutation == 1):
-    #     ## select random row to be removed
-    #     row = random.choice(gdb_keys)
-    #     print(f"Row removed: {row} : {second_dict[row]}")
-    #     second_dict.pop(row)
-    #     return second_dict, row
+
+##generate new row of ranom values
+def gen_new_row(dict):
+    head = list(dict.keys())
+    headers = list(dict[head[0]].keys())
+    newdict = {}
+    for h in headers:
+        newdict[h] = random.choice(string.printable)
+    return newdict
 
 ## system testing:
 #1. read excel
@@ -142,6 +176,9 @@ def system_logic_testing():
 def mainTest():
     print("========== Black box testing ==========")
     blackbox_testing()
+    print()
+    print("========== White box testing ==========")
+    white_box()
     print()
     print("========= Data mutation testing ==========")
     system_logic_testing()
