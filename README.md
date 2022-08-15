@@ -6,7 +6,7 @@ Clone the repository and cd into it.
 Activate the virtual environment with ```source myenv/bin/activate```
 Alternatively, install the required dependency packages with ```python3 -m pip install -r requirements.txt```. You may need to install your platform-specific version of the GDAL library.
 
-If the gdb and xlsx have identical columns but with differing names (e.g "PSTL_CDE" in the gsb and "Postal Code" in the xlsx are both referring to the same contents), update the provided mappings.config accordingly.
+If the gdb and xlsx have identical columns but with differing names (e.g "PSTL_CDE" in the gdb and "Postal Code" in the xlsx are both referring to the same contents), update the provided mappings.config accordingly.
 
 Then, run the program with```python3 main.py```. A GUI window should appear.
 Click the "Browse" buttons to navigate and select the gdb file, the xlsx file and the directory where you wish the report output to be generated in. 
